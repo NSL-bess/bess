@@ -124,7 +124,7 @@ void NFVMonitor::ProcessBatch(Context *ctx, bess::PacketBatch *batch) {
       it->second += 1;
     }
 
-    // per_core_latency_sample_.push_back(curr_ts_ns_ - get_hw_timestamp(pkt));
+    per_core_latency_sample_.push_back(curr_ts_ns_ - get_hw_timestamp(pkt));
     epoch_packet_counter_ += 1;
     uint64_t pkt_delay = curr_ts_ns_ - get_hw_timestamp(pkt);
     if (pkt_delay > 200000) {
