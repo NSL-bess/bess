@@ -286,6 +286,8 @@ std::map<uint16_t, uint16_t> NFVCtrl::LongTermOptimization(const std::vector<dou
       flow_rate_per_cpu[i] += flow_rate_per_bucket[it];
     }
   }
+  //Call gurobi
+  GurobiOptimization(flow_rate_per_cpu, flow_rate_per_bucket);
 
   std::vector<uint16_t> to_be_moved;
   // Find if any CPU is exceeding threshold and add it to the to be moved list
@@ -358,6 +360,37 @@ void NFVCtrl::DeInit() {
   nfv_ctrl = nullptr;
   NFVCtrlMsgDeInit();
 }
+
+std::vector<uint16_t> FindActiveCores(std::vector<double>& flow_rate_per_cpu) {
+  std::vector<uint16_t> active_cores;
+  for (uint16_t i = 0; i < flow_rate_per_cpu.size(); i++) {
+    if (flow_rates[i] > 0) {
+      active_cores.push_back(i);
+    }
+  }
+  return active_cores;
+}
+void WriteToGurobi(std::vector<double>& flow_rate_per_cpu, std::vector<double>& flow_rates) {
+  std::vector<uint16_t> active_cores = FindActiveCores(flow_rate_per_cpu);
+  uint16_t num_cores = active_cores.len();
+  LOG(INFO) << num_cores << flow_rates.size();
+  std::ofstream file_out;
+  file_out.open("./gurobi_in");
+  file_out << num_cores <<std::endl;
+  file_out << flow_rates.size() << std::endl;
+  for (auto &it : flow_rates) {
+    file_out << it<< std::endl;
+  }
+ file_out.close();
+}
+
+std::map<uint16_t, uint16_t> GurobiOptimization(const std::vector<double> &flow_rate_per_bucket, std::vector<double>& flow_rate_per_cpu) { 
+
+  WriteToGurobi(flow_rate_per_cpu, flow_rate_per_bucket);
+  return std::map<uint16_t,uint16_t>();
+  //ReadFromGurobi();
+}
+
 
 CommandResponse NFVCtrl::CommandGetSummary(const bess::pb::EmptyArg &arg) {
   for (const auto &it : ModuleGraph::GetAllModules()) {

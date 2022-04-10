@@ -56,6 +56,7 @@ class NFVCtrl final : public Module {
   std::map<uint16_t, std::vector<uint16_t>> core_bucket_mapping_;
   // packet rate threshold given the flow count. Values are found using offline profiling
   std::map<uint64_t, uint64_t> flow_count_pps_threshold_;
+  string gurobi_path = "gurobi_in"
   // The lock for maintaining a pool of software queues
   mutable std::mutex sw_q_mtx_;
 
