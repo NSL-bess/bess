@@ -1,4 +1,5 @@
 import gurobipy
+import time
 
 INPUT_FILE = "./gurobi_in"
 THRESHILD_FILE = "long_term_threshold"
@@ -12,7 +13,11 @@ def read_threshold():
         thresholds[int(line[0])] = int(line[1])
     return thresholds
 def do_model(num_cores, num_flows, FR):
-    model = gurobipy.Model("SampleModel")
+    env = gurobipy.Env(empty=True)
+    env.setParam('OutputFlag', 0)
+    env.setParam("LogFile", "g_log.txt")
+    env.start()
+    model = gurobipy.Model("SampleModel", env=env)
     thresholds = read_threshold()
     
     # %%
@@ -23,6 +28,7 @@ def do_model(num_cores, num_flows, FR):
 #    AC = [0]*num_cores 
     
     # %%
+    CPU_g = model.addVars(num_cores, vtype=gurobipy.GRB.BINARY, name = "CPU")
     MAP_g = model.addVars(num_cores * num_flows, vtype=gurobipy.GRB.BINARY, name = "MAP")
     #AC_g = model.addVars(num_cores, vtype=gurobipy.GRB.BINARY, name = "AC")
     
@@ -39,25 +45,47 @@ def do_model(num_cores, num_flows, FR):
             s += MAP_g[c*num_flows + f]
         model.addConstr(s == 1, "flow_"+str(f))
 
+    # CPU is 1 if there are flows
+    for c in range(num_cores):
+        s = gurobipy.LinExpr()
+        for f in range(num_flows):
+            s += MAP_g[c*num_flows + f]
+        model.addConstr(CPU_g[c] * num_flows >= s, "cpu_"+str(c))
+
     # Eq (2) Tr
     Tr_g = []
     for c in range(num_cores):
-        Tr_g.append(model.addVar(name="Tr"))
+        Tr_g.append(model.addVar(name="Tr"+str(c)))
         s = gurobipy.LinExpr()
         for f in range(num_flows):
             s += MAP_g[c*num_flows + f] * FR[f]
-        model.addConstr(s==Tr_g[c], "Tr_set"+str(c))
+        model.addConstr(s <= thresholds[Tc], "Tr_constr"+str(c))
+#        model.addConstr(s==Tr_g[c], "Tr_set"+str(c))
+#        model.addConstr(Tr_g[c] > 0, "Tr_constr"+str(c))
 
     # Eq (4) 
+    '''
     for c in range(num_cores):
         model.addConstr(Tr_g[c] < thresholds[Tc], "Tr_constr"+str(c))
-
+    '''
     # Optimization function
-    rate_diff = model.addVar("name=objective")
+    '''
+    rate_diff_sum = gurobipy.LinExpr() 
     for c in range(num_cores):
-        rate_diff += thresholds[Tc] - Tr_g[c]
+        rate_diff_sum += thresholds[Tc] - Tr_g[c]
+    rate_diff = model.addVar(name="objective")
+    model.addConstr(rate_diff == rate_diff_sum, "sum_diff")
     model.setObjective(rate_diff, gurobipy.GRB.MINIMIZE)
-
+    '''
+    cpu_sum = gurobipy.LinExpr() 
+    for c in range(num_cores):
+        cpu_sum += CPU_g[c]
+    cpu_sum_var = model.addVar(name="objective")
+    model.addConstr(cpu_sum == cpu_sum_var, "cpu_var")
+    model.setObjective(cpu_sum, gurobipy.GRB.MINIMIZE)
+    model.optimize()
+    
+#    return model
 
 
     # add optimization function
@@ -80,16 +108,20 @@ def do_model(num_cores, num_flows, FR):
         latency_variance_g += p50_actual - p50_estimated_g
     model.setObjective(latency_variance_g, gurobipy.GRB.MINIMIZE)
     '''
+    '''
     model.write("mips.lp")
     # %%
     model.optimize()
-    
+    model.computeIIS()
+    model.write("fail.ilp")
+    model.IISConstr
+    model.IISGenConstr
+    ''' 
     feasible = False
     with open("gurobi_out",'a') as f:
         if model.status == gurobipy.GRB.Status.OPTIMAL:
             feasible = True
             f.write("Feasible\n")
-            print(model.objVal)
         else:
             model.computeIIS()
             model.write("fail.ilp")
@@ -97,11 +129,12 @@ def do_model(num_cores, num_flows, FR):
             model.IISGenConstr
             f.write("Infeasible\n")
         if feasible:
-            var = model.getVars()
-            print(var)
+            #var = model.getVars()
+            #print(var)
+            solution = model.getAttr('X', MAP_g)
             for i in range(num_cores):
                 for j in range(num_flows):
-                    f.write("%u"%(int(FC_g[i*num_flows + j].x)))
+                    f.write("%u"%(int(solution[i*num_flows + j])))
                 f.write("\n")
 
 def do_magic():
@@ -114,12 +147,15 @@ def do_magic():
             data = input_file.read()
             if len(data) == 0:
                 return
+            start = time.clock()
             lines = data.split('\n')
             num_cores = int(lines[0])
             num_flows = int(lines[1])
             for i in range(num_flows):
-                FR.append(lines[3+i])
-            do_model(num_cores,num_flows, F)
+                FR.append(float(lines[2+i]))
+            do_model(num_cores,num_flows, FR)
+            end = time.clock()
+            print(end-start)
         read_input()
 do_magic()
 #print(read_threshold())

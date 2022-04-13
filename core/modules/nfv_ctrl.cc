@@ -34,6 +34,8 @@ SoftwareQueue* sw_q_state[DEFAULT_SWQ_COUNT] = {nullptr}; // sw_q can be assigne
 
 bool rcore_state[DEFAULT_INVALID_CORE_ID] = {false}; // rcore can be assigned if true
 
+
+std::map<uint16_t, uint16_t> GurobiOptimization(const std::vector<double> &flow_rate_per_bucket,const std::vector<double>& flow_rate_per_cpu);
 // Global software queue / reserved core management functions
 
 void NFVCtrlMsgInit(int slots) {
@@ -112,22 +114,6 @@ bool NFVCtrlNotifyRCoreToWork(cpu_core_t core_id, int q_id) {
 
 void NFVCtrlNotifyRCoreToRest(cpu_core_t core_id, int q_id) {
   nfv_ctrl->NotifyRCoreToRest(core_id, q_id);
-}
-
-// NFVCtrl helper functions
-
-// Query the Gurobi optimization server to get a core assignment scheme.
-void WriteToGurobi(uint32_t num_cores, std::vector<float> flow_rates, float latency_bound) {
-  LOG(INFO) << num_cores << flow_rates.size() << latency_bound;
-  std::ofstream file_out;
-  file_out.open("./gurobi_in");
-  file_out << num_cores <<std::endl;
-  file_out << flow_rates.size() << std::endl;
-  file_out << std::fixed <<latency_bound <<std::endl;
-  for (auto &it : flow_rates) {
-    file_out << it<< std::endl;
-  }
-  file_out.close();
 }
 
 /// NFVCtrl's own functions
@@ -346,7 +332,7 @@ std::map<uint16_t, uint16_t> NFVCtrl::LongTermOptimization(const std::vector<dou
     }
   }
   //Call gurobi
-  GurobiOptimization(flow_rate_per_cpu, flow_rate_per_bucket);
+  GurobiOptimization(flow_rate_per_bucket, flow_rate_per_cpu);
 
   std::vector<uint16_t> to_be_moved;
   // Find if any CPU is exceeding threshold and add it to the to be moved list
@@ -420,18 +406,18 @@ void NFVCtrl::DeInit() {
   NFVCtrlMsgDeInit();
 }
 
-std::vector<uint16_t> FindActiveCores(std::vector<double>& flow_rate_per_cpu) {
+std::vector<uint16_t> FindActiveCores(const std::vector<double>& flow_rate_per_cpu) {
   std::vector<uint16_t> active_cores;
   for (uint16_t i = 0; i < flow_rate_per_cpu.size(); i++) {
-    if (flow_rates[i] > 0) {
+    if (flow_rate_per_cpu[i] > 0) {
       active_cores.push_back(i);
     }
   }
   return active_cores;
 }
-void WriteToGurobi(std::vector<double>& flow_rate_per_cpu, std::vector<double>& flow_rates) {
+void WriteToGurobi(const std::vector<double>& flow_rate_per_cpu, const std::vector<double>& flow_rates) {
   std::vector<uint16_t> active_cores = FindActiveCores(flow_rate_per_cpu);
-  uint16_t num_cores = active_cores.len();
+  uint16_t num_cores = active_cores.size();
   LOG(INFO) << num_cores << flow_rates.size();
   std::ofstream file_out;
   file_out.open("./gurobi_in");
@@ -443,7 +429,7 @@ void WriteToGurobi(std::vector<double>& flow_rate_per_cpu, std::vector<double>& 
  file_out.close();
 }
 
-std::map<uint16_t, uint16_t> GurobiOptimization(const std::vector<double> &flow_rate_per_bucket, std::vector<double>& flow_rate_per_cpu) { 
+std::map<uint16_t, uint16_t> GurobiOptimization(const std::vector<double> &flow_rate_per_bucket, const std::vector<double>& flow_rate_per_cpu) { 
 
   WriteToGurobi(flow_rate_per_cpu, flow_rate_per_bucket);
   return std::map<uint16_t,uint16_t>();
@@ -461,7 +447,7 @@ CommandResponse NFVCtrl::CommandGetSummary(const bess::pb::EmptyArg &arg) {
 }
 
 struct task_result NFVCtrl::RunTask(Context *ctx, bess::PacketBatch *batch, void *) {
-  if (false && tsc_to_ns(rdtsc()) - long_epoch_last_update_time_ > long_epoch_update_period_) {
+  if ( tsc_to_ns(rdtsc()) - long_epoch_last_update_time_ > long_epoch_update_period_) {
     UpdateFlowAssignment();
     long_epoch_last_update_time_ = tsc_to_ns(rdtsc());
   }
