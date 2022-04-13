@@ -58,6 +58,11 @@ monitor = {}
 nfvig = {}
 nfvmo = {}
 
+# Core
+nfvctrl::NFVCtrl(core_addrs=core_addrs, slo_ns=slo, port=port0)
+bess.add_worker(wid=nfvctrl_core, core=nfvctrl_core)
+nfvctrl.attach_task(wid=nfvctrl_core)
+
 # Pipeline
 for i in range(len(core_addrs)):
     pout0[i] = QueueOut(port=port0, qid=i)
@@ -93,10 +98,6 @@ for i in range(len(core_addrs)):
 for i in range(core_cnt):
     pinc0[i].set_burst(burst=burst_size)
 
-# Core
-nfvctrl::NFVCtrl(core_addrs=core_addrs, slo_ns=slo, port=port0)
-bess.add_worker(wid=nfvctrl_core, core=nfvctrl_core)
-nfvctrl.attach_task(wid=nfvctrl_core)
 
 for i in range(core_cnt):
     bess.add_worker(wid=i+offset0, core=i+offset0)
