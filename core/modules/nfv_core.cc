@@ -205,7 +205,7 @@ CommandResponse NFVCore::CommandSetBurst(
 }
 
 std::string NFVCore::GetDesc() const {
-  return bess::utils::Format("%s:%hhu/%d", port_->name().c_str(), qid_, llring_count(local_queue_));
+  return bess::utils::Format("%s:%hhu", port_->name().c_str(), qid_);
 }
 
 /* Get a batch from NIC and send it to downstream */
@@ -228,7 +228,7 @@ struct task_result NFVCore::RunTask(Context *ctx, bess::PacketBatch *batch,
       // Update |epoch_packet_arrival_| and |epoch_flow_cache_|
       UpdateStatsOnFetchBatch(batch);
     }
-
+    LOG(INFO) << batch->cnt();
     if (batch->cnt() < 30) {
       break;
     }
@@ -241,7 +241,14 @@ struct task_result NFVCore::RunTask(Context *ctx, bess::PacketBatch *batch,
     return {.block = false, .packets = 0, .bits = 0};
   }
   batch->set_cnt(cnt);
-
+  for(int i = 0; i < batch->cnt(); i++) {
+    bess::Packet *pkt = batch->pkts()[i];
+    Ethernet *eth = pkt->head_data<Ethernet *>();
+    assert(eth != NULL);
+    if (eth == NULL) {
+      LOG(INFO) << "eth is null";
+    }
+  }
   uint64_t total_bytes = 0;
   for (uint32_t i = 0; i < cnt; i++) {
     total_bytes += batch->pkts()[i]->total_len();
@@ -251,6 +258,7 @@ struct task_result NFVCore::RunTask(Context *ctx, bess::PacketBatch *batch,
   // |epoch_packet_processed_| and |per_flow_states_|
   UpdateStatsPreProcessBatch(batch);
 
+  
   ProcessBatch(ctx, batch);
 
   UpdateStatsPostProcessBatch(batch);
@@ -292,6 +300,9 @@ void NFVCore::UpdateStatsOnFetchBatch(bess::PacketBatch *batch) {
     }
     state->short_epoch_packet_count += 1;
 
+    if (pkt->head_data<Ethernet*>() == NULL) {
+      LOG(INFO) << "came in NULL";
+    }
     if (state->sw_q_state) {
       state->sw_q_state->sw_batch->add(pkt);
     } else {

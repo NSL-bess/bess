@@ -44,7 +44,9 @@ void FlowACL::ProcessBatch(Context *ctx, bess::PacketBatch *batch) {
 
   gate_idx_t incoming_gate = ctx->current_igate;
 
+  LOG(INFO) << "Batch cnt: "<<batch->cnt();
   int cnt = batch->cnt();
+  LOG(INFO) << "packet: "<< batch->pkts()[cnt-1];
   for (int i = 0; i < cnt; i++) {
     bess::Packet *pkt = batch->pkts()[i];
 
