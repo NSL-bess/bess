@@ -258,7 +258,24 @@ struct task_result NFVCore::RunTask(Context *ctx, bess::PacketBatch *batch,
   // |epoch_packet_processed_| and |per_flow_states_|
   UpdateStatsPreProcessBatch(batch);
 
+<<<<<<< Updated upstream
+<<<<<<< Updated upstream
   
+=======
+=======
+>>>>>>> Stashed changes
+  for(int i = 0; i < batch->cnt(); i++) {
+    bess::Packet *pkt = batch->pkts()[i];
+    Ethernet *eth = pkt->head_data<Ethernet *>();
+    assert(eth != NULL);
+    if (eth == NULL) {
+      LOG(INFO) << "eth is null";
+    }
+  }
+<<<<<<< Updated upstream
+>>>>>>> Stashed changes
+=======
+>>>>>>> Stashed changes
   ProcessBatch(ctx, batch);
 
   UpdateStatsPostProcessBatch(batch);
@@ -442,6 +459,7 @@ bool NFVCore::ShortEpochProcess() {
     uint32_t local_assigned = 0;
     auto flow_it = unoffload_flows_.begin();
     while (flow_it != unoffload_flows_.end()) {
+      LOG(INFO) << flow_it->first.src_port;
       uint32_t task_size = flow_it->second->queued_packet_count;
       if (task_size <= epoch_packet_thresh_) {
         if (local_assigned + task_size < epoch_packet_thresh_) {
