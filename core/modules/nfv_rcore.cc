@@ -23,9 +23,16 @@ CommandResponse NFVRCore::Init(const bess::pb::NFVRCoreArg &arg) {
   bess::ctrl::nfv_rcores[core_id_] = this;
   bess::ctrl::rcore_state[core_id_] = true;
 
-  int bytes = llring_bytes_with_slots(256);
+  size_t kQSize = 64;
+  int bytes = llring_bytes_with_slots(kQSize);
   to_add_queue_ = reinterpret_cast<llring *>(std::aligned_alloc(alignof(llring), bytes));
+  if (to_add_queue_) {
+    llring_init(to_add_queue_, kQSize, 0, 1);
+  }
   to_remove_queue_ = reinterpret_cast<llring *>(std::aligned_alloc(alignof(llring), bytes));
+  if (to_remove_queue_) {
+    llring_init(to_remove_queue_, kQSize, 0, 1);
+  }
   sw_q_ = nullptr;
 
   return CommandSuccess();
@@ -55,9 +62,12 @@ struct task_result NFVRCore::RunTask(Context *ctx, bess::PacketBatch *batch,
                                      void *) {
   // 1) check |remove|
   if (llring_count(to_remove_queue_) == 1) {
-    llring_sc_dequeue(to_remove_queue_, (void**)&sw_q_);
-    sw_q_ = nullptr;
-    return {.block = false, .packets = 0, .bits = 0};
+    llring *q = nullptr;
+    llring_sc_dequeue(to_remove_queue_, (void**)&q);
+    if (q == sw_q_) {
+      sw_q_ = nullptr;
+      return {.block = false, .packets = 0, .bits = 0};
+    }
   }
 
   // 2) check |assign|

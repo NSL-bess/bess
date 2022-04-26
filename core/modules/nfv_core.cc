@@ -334,30 +334,16 @@ void NFVCore::UpdateStatsOnFetchBatch(bess::PacketBatch *batch) {
   epoch_packet_arrival_ += cnt;
 
   // Note: need to consider possible drops due to |local_queue_| overflow
-  llring_sp_enqueue_burst(local_queue_, (void **)local_batch_->pkts(), local_batch_->cnt());
-  for (auto &sw_q_it : sw_q_) {
-    sw_q_it.EnqueueBatch();
-  }
-}
-
-void NFVCore::SplitAndEnqueueBatch(bess::PacketBatch *batch) {
-  FlowState *state = nullptr;
-  int cnt = batch->cnt();
-  for (int i = 0; i < cnt; i++) {
-    bess::Packet *pkt = batch->pkts()[i];
-    state = get_attr<FlowState*>(this, flow_stats_attr_id_, pkt);
-    if (state == nullptr) {
-      continue;
+  if (local_batch_->cnt()) {
+    int queued = llring_sp_enqueue_burst(local_queue_, (void **)local_batch_->pkts(), local_batch_->cnt());
+    if (queued < 0) {
+      queued = queued & (~RING_QUOT_EXCEED);
     }
-    if (state->sw_q_state) {
-      state->sw_q_state->sw_batch->add(pkt);
-    } else {
-      local_batch_->add(pkt);
+    if (queued < local_batch_->cnt()) {
+      int to_drop = local_batch_->cnt() - queued;
+      bess::Packet::Free(local_batch_->pkts() + queued, to_drop);
     }
   }
-
-  // Note: need to consider possible drops due to |local_queue_| overflow
-  llring_sp_enqueue_burst(local_queue_, (void **)local_batch_->pkts(), local_batch_->cnt());
   for (auto &sw_q_it : sw_q_) {
     sw_q_it.EnqueueBatch();
   }
@@ -371,18 +357,18 @@ void NFVCore::UpdateStatsPreProcessBatch(bess::PacketBatch *batch) {
   int cnt = batch->cnt();
   for (int i = 0; i < cnt; i++) {
     bess::Packet *pkt = batch->pkts()[i];
-    // Update RSS bucket packet counters.
-    uint32_t id = bess::utils::bucket_stats.RSSHashToID(reinterpret_cast<rte_mbuf*>(pkt)->hash.rss);
 
-    bess::utils::bucket_stats.bucket_table_lock.lock_shared();
-    bess::utils::bucket_stats.per_bucket_packet_counter[id] += 1;
-    bess::utils::bucket_stats.bucket_table_lock.unlock_shared();
+    // Update per-bucket packet counter.
+    uint32_t id = bess::utils::bucket_stats->RSSHashToID(reinterpret_cast<rte_mbuf*>(pkt)->hash.rss);
+    bess::utils::bucket_stats->bucket_table_lock.lock_shared();
+    bess::utils::bucket_stats->per_bucket_packet_counter[id] += 1;
+    bess::utils::bucket_stats->bucket_table_lock.unlock_shared();
 
+    // Update per-flow packet counter.
     state = get_attr<FlowState*>(this, flow_stats_attr_id_, pkt);
     if (state == nullptr) {
       continue;
     }
-
     state->egress_packet_count += 1;
   }
 

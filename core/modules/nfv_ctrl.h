@@ -6,7 +6,6 @@
 #include "../module.h"
 #include "../pb/module_msg.pb.h"
 #include "../drivers/pmd.h"
-
 #include "../utils/cpu_core.h"
 
 using bess::utils::WorkerCore;
@@ -21,6 +20,8 @@ class NFVCtrl final : public Module {
 
   CommandResponse Init(const bess::pb::NFVCtrlArg &arg);
   void DeInit() override;
+
+  void InitPMD(PMDPort* port);
 
   // Returns |n| (idle) software queue's index as a bitmask.
   // Once assigned, the software queue is uniquely accessed by NFVCore (the caller).
@@ -45,25 +46,30 @@ class NFVCtrl final : public Module {
   CommandResponse CommandGetSummary(const bess::pb::EmptyArg &arg);
 
  private:
+  // LongTermOptimzation adjusts the system for long term changes. It makes sure
+  // that no cores are violating p50 SLO. It also reduces resource consumption by
+  // packing flows tightly and freeing up CPU cores.
+  std::map<uint16_t, uint16_t> LongTermOptimization(const std::vector<double>& per_bucket_pkt_rate);
 
-   // LongTermOptimzation adjusts the system for long term changes in the flow
-   // behavior. It makes sure that none of the cores are violating p50 SLO. It
-   // also reduces resource consumption by packing flows tightly and freeing up
-   // CPUs.
-  std::map<uint16_t, uint16_t> LongTermOptimization(const std::vector<double> &flow_rate_per_bucket);
-  // It uses the first fit algorithm to find a CPU for the flow to be moved
-  std::map<uint16_t, uint16_t> FindMoves(std::vector<double>& flow_rate_per_cpu, std::vector<uint16_t>& to_be_moved, const std::vector<double>& flow_rate_per_bucket);
-  // All available per-core packet queues in a cluster
-  std::vector<WorkerCore> cpu_cores_;
+  // Apply first-fit to find the best core for the set of RSS buckets to be migrated
+  std::map<uint16_t, uint16_t> FindMoves(std::vector<double>& per_core_pkt_rate, std::vector<uint16_t>& to_move_cores, const std::vector<double>& per_bucket_pkt_rate);
+
   uint64_t long_epoch_update_period_;
   uint64_t long_epoch_last_update_time_;
-  uint16_t total_core_count_ = 0;
-  uint64_t slo_p50_ = 200000000; //200ms
+  uint64_t slo_p50_ = 200000000; // Current target is 200 ms
 
-  PMDPort *port_;
+  // For each normal CPU core, the set of assigned RSS buckets
   std::map<uint16_t, std::vector<uint16_t>> core_bucket_mapping_;
   // packet rate threshold given the flow count. Values are found using offline profiling
   std::map<uint64_t, uint64_t> flow_count_pps_threshold_;
+
+  // For updating RSS bucket assignment
+  PMDPort *port_;
+  // Normal cores and reserved cores
+  std::vector<WorkerCore> cpu_cores_;
+  uint16_t total_core_count_;
+  uint16_t active_core_count_;
+
   // The lock for maintaining a pool of software queues
   mutable std::mutex sw_q_mtx_;
 
